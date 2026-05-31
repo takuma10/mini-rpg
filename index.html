@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Mini Dungeon RPG</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0f;
+    color: #ddd;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
+  }
+  h1 {
+    color: #00ccff;
+    letter-spacing: 6px;
+    margin-bottom: 4px;
+    font-size: 1.4em;
+  }
+  #subtitle { color: #555; font-size: 0.8em; margin-bottom: 16px; }
+
+  /* ── Layout ── */
+  #game { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+
+  /* ── Map ── */
+  #map-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  #map {
+    display: grid;
+    border: 2px solid #222;
+    background: #050508;
+  }
+  .cell {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: bold;
+    transition: background 0.1s;
+  }
+  .cell-wall   { background: #111; color: #333; }
+  .cell-floor  { background: #050508; color: #222; }
+  .cell-player { background: #003344; color: #00ccff; }
+  .cell-enemy  { background: #1a0000; color: #ff4444; }
+  .cell-boss   { background: #2a0000; color: #ff0000; animation: pulse 1s infinite alternate; }
+  .cell-item   { background: #1a1400; color: #ffcc00; }
+  .cell-exit   { background: #001a00; color: #00ff88; }
+  @keyframes pulse { from { background: #2a0000; } to { background: #4a0000; } }
+
+  /* ── Status ── */
+  #status {
+    background: #0d0d14;
+    border: 1px solid #222;
+    padding: 12px 16px;
+    min-width: 220px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .stat-label { color: #666; font-size: 0.75em; text-transform: uppercase; letter-spacing: 2px; }
+  .stat-name  { color: #00ccff; font-size: 1.1em; font-weight: bold; }
+  .stat-level { color: #ffcc00; }
+  .bar-wrap { margin-top: 2px; }
+  .bar-bg { background: #1a1a1a; height: 10px; border-radius: 2px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+  .bar-hp   { background: #22cc44; }
+  .bar-xp   { background: #4488ff; }
+  .bar-low  { background: #ff4444; }
+  .bar-mid  { background: #ffaa00; }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; }
+  .stat-val { color: #eee; }
+  .atk-val  { color: #ff6666; }
+  .def-val  { color: #6688ff; }
+  .gold-val { color: #ffcc00; }
+  .pot-val  { color: #44ff88; }
+
+  /* ── Log ── */
+  #log-wrap { width: 100%; max-width: 740px; margin-top: 12px; }
+  #log {
+    background: #080810;
+    border: 1px solid #1a1a2a;
+    height: 120px;
+    overflow-y: auto;
+    padding: 8px 12px;
+    font-size: 0.85em;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .log-line { line-height: 1.5; }
+  .log-info   { color: #aaa; }
+  .log-good   { color: #44ff88; }
+  .log-bad    { color: #ff5555; }
+  .log-warn   { color: #ffcc00; }
+  .log-system { color: #00ccff; }
+
+  /* ── Combat panel ── */
+  #combat-panel {
+    display: none;
+    background: #0a0008;
+    border: 2px solid #440022;
+    padding: 16px;
+    width: 100%; max-width: 740px;
+    margin-top: 8px;
+  }
+  #combat-panel.active { display: block; }
+  #enemy-name { color: #ff4444; font-size: 1.1em; font-weight: bold; margin-bottom: 8px; }
+  .combat-bars { display: flex; gap: 24px; margin-bottom: 12px; flex-wrap: wrap; }
+  .combat-bar-block { flex: 1; min-width: 140px; }
+  .combat-bar-label { font-size: 0.75em; color: #888; margin-bottom: 3px; }
+  #btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #111122;
+    color: #ccc;
+    border: 1px solid #333;
+    padding: 8px 18px;
+    font-family: inherit;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: #1e1e33; border-color: #555; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #btn-attack { border-color: #aa2222; color: #ff8888; }
+  #btn-attack:hover { background: #1a0808; }
+  #btn-potion { border-color: #228822; color: #88ff88; }
+  #btn-potion:hover { background: #081a08; }
+  #btn-run    { border-color: #555; }
+
+  /* ── Input / Intro ── */
+  #intro {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    margin-top: 20px;
+  }
+  #intro input {
+    background: #111;
+    border: 1px solid #333;
+    color: #eee;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 1em;
+    text-align: center;
+    width: 220px;
+  }
+  #intro input:focus { outline: none; border-color: #00ccff; }
+
+  /* ── Controls hint ── */
+  #controls { color: #444; font-size: 0.78em; margin-top: 8px; letter-spacing: 1px; }
+
+  /* ── Legend ── */
+  #legend {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 0.75em; color: #555; margin-top: 4px;
+  }
+  .leg { display: flex; align-items: center; gap: 4px; }
+
+  /* ── Game Over / Clear ── */
+  #overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+  }
+  #overlay.active { display: flex; }
+  #overlay h2 { font-size: 2em; letter-spacing: 6px; }
+  .overlay-clear { color: #ffcc00; }
+  .overlay-dead  { color: #ff3333; }
+  #overlay p { color: #aaa; }
+  #overlay button { font-size: 1em; padding: 10px 28px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>⚔ MINI DUNGEON RPG</h1>
+<p id="subtitle">wasd / 矢印キー で移動</p>
+
+<!-- Intro screen -->
+<div id="intro">
+  <div class="stat-label">冒険者の名前</div>
+  <input id="name-input" type="text" maxlength="12" placeholder="名前を入力..." autofocus>
+  <button id="start-btn" onclick="startGame()">冒険開始</button>
+</div>
+
+<!-- Main game (hidden until start) -->
+<div id="game" style="display:none">
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="legend">
+      <span class="leg"><span style="color:#00ccff">@</span> あなた</span>
+      <span class="leg"><span style="color:#ff4444">E</span> 敵</span>
+      <span class="leg"><span style="color:#ff0000">B</span> ボス</span>
+      <span class="leg"><span style="color:#ffcc00">★</span> アイテム</span>
+      <span class="leg"><span style="color:#00ff88">X</span> 出口</span>
+    </div>
+    <div id="controls">wasd / ↑↓←→ で移動</div>
+  </div>
+
+  <div id="status">
+    <div>
+      <div class="stat-label">冒険者</div>
+      <div class="stat-name" id="s-name">-</div>
+    </div>
+    <div>
+      <div class="stat-label">レベル</div>
+      <div class="stat-level" id="s-level">1</div>
+    </div>
+    <div>
+      <div class="stat-label">HP</div>
+      <div class="bar-wrap">
+        <div style="display:flex;justify-content:space-between;font-size:0.8em;margin-bottom:2px">
+          <span id="s-hp-txt">30/30</span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill bar-hp" id="s-hp-bar" style="width:100%"></div></div>
+      </div>
+    </div>
+    <div>
+      <div class="stat-label">EXP</div>
+      <div class="bar-wrap">
+        <div style="display:flex;justify-content:space-between;font-size:0.8em;margin-bottom:2px">
+          <span id="s-xp-txt">0/30</span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill bar-xp" id="s-xp-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">ATK</span><span class="atk-val" id="s-atk">6</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">DEF</span><span class="def-val" id="s-def">1</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Gold</span><span class="gold-val" id="s-gold">0</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Potion</span><span class="pot-val" id="s-pot">2</span>
+    </div>
+  </div>
+</div>
+
+<!-- Log -->
+<div id="log-wrap" style="display:none">
+  <div id="log"></div>
+</div>
+
+<!-- Combat panel -->
+<div id="combat-panel">
+  <div id="enemy-name">???</div>
+  <div class="combat-bars">
+    <div class="combat-bar-block">
+      <div class="combat-bar-label">あなたのHP <span id="c-php"></span></div>
+      <div class="bar-bg"><div class="bar-fill bar-hp" id="c-p-bar" style="width:100%"></div></div>
+    </div>
+    <div class="combat-bar-block">
+      <div class="combat-bar-label">敵のHP <span id="c-ehp"></span></div>
+      <div class="bar-bg"><div class="bar-fill" id="c-e-bar" style="width:100%;background:#ff4444"></div></div>
+    </div>
+  </div>
+  <div id="btns">
+    <button id="btn-attack" onclick="combatAction('attack')">⚔ 攻撃 [A]</button>
+    <button id="btn-potion" onclick="combatAction('potion')">🧪 ポーション [P]</button>
+    <button id="btn-run"    onclick="combatAction('run')">💨 逃げる [R]</button>
+  </div>
+</div>
+
+<!-- Game Over / Clear overlay -->
+<div id="overlay">
+  <h2 id="overlay-title"></h2>
+  <p id="overlay-msg"></p>
+  <button onclick="location.reload()">もう一度プレイ</button>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────
+const MAP_W = 18, MAP_H = 10;
+
+const ENEMIES = [
+  { name:"スライム", hp:8,  atk:3,  def:0, xp:10, gold:5  },
+  { name:"ゴブリン", hp:12, atk:5,  def:1, xp:20, gold:10 },
+  { name:"オーク",   hp:20, atk:8,  def:2, xp:35, gold:20 },
+  { name:"ドラゴン", hp:50, atk:15, def:4, xp:120,gold:60, boss:true },
+];
+
+// ── State ──────────────────────────────────────────────────
+let player, grid, px, py, bossDead, inCombat, currentEnemy;
+
+function rand(a, b){ return a + Math.floor(Math.random() * (b - a + 1)); }
+
+// ── Map generation ─────────────────────────────────────────
+function makeMap() {
+  grid = Array.from({length: MAP_H}, () => Array(MAP_W).fill('.'));
+  for(let y=0;y<MAP_H;y++) grid[y][0]=grid[y][MAP_W-1]='#';
+  for(let x=0;x<MAP_W;x++) grid[0][x]=grid[MAP_H-1][x]='#';
+  for(let i=0;i<22;i++){
+    const x=rand(1,MAP_W-2), y=rand(1,MAP_H-2);
+    if(!(x<=2&&y<=2)) grid[y][x]='#';
+  }
+  place('E', 6); place('*', 3);
+  // boss
+  placeInZone('B', MAP_W-5, MAP_W-2, 1, MAP_H-2);
+  // exit
+  placeInZone('X', MAP_W-4, MAP_W-2, 1, MAP_H-2);
+  px=1; py=1; grid[py][px]='@';
+}
+
+function place(ch, n){
+  for(let i=0;i<n;i++){
+    let tries=0;
+    while(tries++<100){
+      const x=rand(1,MAP_W-2), y=rand(1,MAP_H-2);
+      if(grid[y][x]=='.'){grid[y][x]=ch;break;}
+    }
+  }
+}
+function placeInZone(ch, x1,x2,y1,y2){
+  let tries=0;
+  while(tries++<200){
+    const x=rand(x1,x2), y=rand(y1,y2);
+    if(grid[y][x]=='.'){grid[y][x]=ch;return;}
+  }
+  place(ch,1);
+}
+
+// ── Render map ─────────────────────────────────────────────
+const CELL_CLASS = {
+  '#':'cell-wall', '.':'cell-floor', '@':'cell-player',
+  'E':'cell-enemy', 'B':'cell-boss', '*':'cell-item', 'X':'cell-exit'
+};
+const CELL_CHAR = {
+  '#':'█', '.':'·', '@':'@', 'E':'E', 'B':'B', '*':'★', 'X':'X'
+};
+
+function renderMap(){
+  const el = document.getElementById('map');
+  el.style.gridTemplateColumns = `repeat(${MAP_W}, 32px)`;
+  el.innerHTML = '';
+  for(let y=0;y<MAP_H;y++){
+    for(let x=0;x<MAP_W;x++){
+      const c = grid[y][x];
+      const div = document.createElement('div');
+      div.className = 'cell ' + (CELL_CLASS[c]||'cell-floor');
+      div.textContent = CELL_CHAR[c]||c;
+      el.appendChild(div);
+    }
+  }
+}
+
+// ── Status panel ───────────────────────────────────────────
+function updateStatus(){
+  const p = player;
+  document.getElementById('s-name').textContent  = p.name;
+  document.getElementById('s-level').textContent = 'Lv.' + p.level;
+  document.getElementById('s-hp-txt').textContent = `${p.hp} / ${p.maxHp}`;
+  document.getElementById('s-xp-txt').textContent = `${p.xp} / ${p.xpNext}`;
+  document.getElementById('s-atk').textContent   = p.atk;
+  document.getElementById('s-def').textContent   = p.def;
+  document.getElementById('s-gold').textContent  = p.gold;
+  document.getElementById('s-pot').textContent   = p.potions;
+
+  const hpPct = Math.max(0, p.hp / p.maxHp * 100);
+  const hpBar = document.getElementById('s-hp-bar');
+  hpBar.style.width = hpPct + '%';
+  hpBar.className = 'bar-fill ' + (hpPct>50?'bar-hp':hpPct>25?'bar-mid':'bar-low');
+
+  const xpPct = Math.min(100, p.xp / p.xpNext * 100);
+  document.getElementById('s-xp-bar').style.width = xpPct + '%';
+}
+
+// ── Log ────────────────────────────────────────────────────
+function log(msg, type='info'){
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = 'log-line log-' + type;
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Combat UI ──────────────────────────────────────────────
+function updateCombatBars(){
+  const p = player, e = currentEnemy;
+  document.getElementById('c-php').textContent = `${p.hp}/${p.maxHp}`;
+  document.getElementById('c-ehp').textContent = `${e.hp}/${e.maxHp}`;
+  const ppct = Math.max(0, p.hp/p.maxHp*100);
+  const pbar = document.getElementById('c-p-bar');
+  pbar.style.width = ppct+'%';
+  pbar.className = 'bar-fill '+(ppct>50?'bar-hp':ppct>25?'bar-mid':'bar-low');
+  document.getElementById('c-e-bar').style.width = Math.max(0,e.hp/e.maxHp*100)+'%';
+}
+
+function setCombatBtns(enabled){
+  ['btn-attack','btn-potion','btn-run'].forEach(id=>{
+    document.getElementById(id).disabled = !enabled;
+  });
+}
+
+function openCombat(enemy){
+  inCombat = true;
+  currentEnemy = enemy;
+  document.getElementById('enemy-name').textContent = '⚔ ' + enemy.name + (enemy.boss?' 【ボス】':'') + ' が現れた！';
+  document.getElementById('combat-panel').classList.add('active');
+  updateCombatBars();
+  setCombatBtns(true);
+}
+
+function closeCombat(){
+  inCombat = false;
+  document.getElementById('combat-panel').classList.remove('active');
+}
+
+function combatAction(action){
+  if(!inCombat) return;
+  setCombatBtns(false);
+  const p = player, e = currentEnemy;
+
+  if(action === 'attack'){
+    const dmg = Math.max(1, p.atk - e.def + rand(-2,2));
+    e.hp -= dmg;
+    log(`→ ${e.name} に ${dmg} ダメージ！`, 'good');
+    if(e.hp <= 0){
+      log(`${e.name} を倒した！ +${e.xp}XP  +${e.gold}G`, 'warn');
+      p.xp += e.xp; p.gold += e.gold;
+      if(e.boss){ bossDead = true; p.gold += 50; log('ボスを倒した！ 出口(X)を目指せ！', 'system'); }
+      checkLevelUp();
+      closeCombat(); updateStatus(); renderMap();
+      return;
+    }
+  } else if(action === 'potion'){
+    if(p.potions <= 0){ log('ポーションがない！', 'bad'); setCombatBtns(true); return; }
+    const heal = 18;
+    p.hp = Math.min(p.maxHp, p.hp + heal);
+    p.potions--;
+    log(`ポーションを使用！ +${heal}HP`, 'good');
+  } else if(action === 'run'){
+    if(Math.random() < 0.5){
+      log('逃げた！', 'system');
+      closeCombat(); updateStatus(); renderMap();
+      return;
+    } else {
+      log('逃げられなかった！', 'bad');
+    }
+  }
+
+  // enemy turn
+  const edm = Math.max(1, e.atk - p.def + rand(-2,2));
+  p.hp -= edm;
+  log(`${e.name} の攻撃！ ${edm} ダメージ！`, 'bad');
+  updateCombatBars();
+  updateStatus();
+
+  if(p.hp <= 0){
+    closeCombat();
+    showOverlay(false);
+    return;
+  }
+  setCombatBtns(true);
+}
+
+function checkLevelUp(){
+  const p = player;
+  if(p.xp >= p.xpNext){
+    p.level++;
+    p.xpNext = Math.floor(p.xpNext * 1.8);
+    p.maxHp += 8; p.hp = p.maxHp;
+    p.atk += 2; p.def += 1;
+    log(`★ LEVEL UP! → Lv.${p.level}  HP↑ ATK↑ DEF↑`, 'system');
+  }
+}
+
+// ── Item ───────────────────────────────────────────────────
+function pickItem(){
+  const r = Math.random();
+  if(r < 0.4){
+    player.potions++;
+    log('ポーション を手に入れた！', 'good');
+  } else if(r < 0.7){
+    const g = rand(8,25);
+    player.gold += g;
+    log(`${g} ゴールド を拾った！`, 'warn');
+  } else if(r < 0.9){
+    player.atk++;
+    log('武器を強化した！ ATK+1', 'good');
+  } else {
+    player.def++;
+    log('鎧を手に入れた！ DEF+1', 'good');
+  }
+}
+
+// ── Overlay ────────────────────────────────────────────────
+function showOverlay(win){
+  const ov = document.getElementById('overlay');
+  const title = document.getElementById('overlay-title');
+  const msg   = document.getElementById('overlay-msg');
+  if(win){
+    title.textContent = '🎉 CLEAR!';
+    title.className = 'overlay-clear';
+    msg.textContent = `${player.name}  最終Lv.${player.level}  獲得Gold: ${player.gold}G`;
+  } else {
+    title.textContent = '☠ GAME OVER';
+    title.className = 'overlay-dead';
+    msg.textContent = `${player.name} は力尽きた...  Lv.${player.level}`;
+  }
+  ov.classList.add('active');
+}
+
+// ── Movement ───────────────────────────────────────────────
+function move(dx, dy){
+  if(inCombat) return;
+  const nx = px+dx, ny = py+dy;
+  if(nx<0||nx>=MAP_W||ny<0||ny>=MAP_H) return;
+  const cell = grid[ny][nx];
+  if(cell==='#') return;
+
+  grid[py][px]='.'; grid[ny][nx]='@'; px=nx; py=ny;
+
+  if(cell==='E'){
+    const base = ENEMIES[rand(0,2)];
+    openCombat({...base, maxHp:base.hp, hp:base.hp});
+  } else if(cell==='B'){
+    if(!bossDead){
+      log('!! ボスが現れた !! 逃げることはできない！', 'bad');
+      const boss = {...ENEMIES[3], maxHp:ENEMIES[3].hp, hp:ENEMIES[3].hp};
+      document.getElementById('btn-run').disabled = true;
+      openCombat(boss);
+    } else {
+      log('ボスはすでに倒れている。', 'info');
+    }
+  } else if(cell==='*'){
+    log('アイテムを発見！', 'warn');
+    pickItem();
+  } else if(cell==='X'){
+    if(bossDead){
+      showOverlay(true);
+    } else {
+      log('ボスを倒さないと出口は開かない！', 'bad');
+      grid[ny][nx]='X'; grid[py][px]='@';
+      // revert
+      grid[py][px]='X'; px-=dx; py-=dy; grid[py][px]='@';
+    }
+  }
+  renderMap(); updateStatus();
+}
+
+// ── Keyboard ───────────────────────────────────────────────
+document.addEventListener('keydown', e=>{
+  if(document.activeElement === document.getElementById('name-input')) return;
+  if(inCombat){
+    if(e.key==='a'||e.key==='A') combatAction('attack');
+    if(e.key==='p'||e.key==='P') combatAction('potion');
+    if(e.key==='r'||e.key==='R') combatAction('run');
+    return;
+  }
+  const map = {
+    'w':[ 0,-1],'ArrowUp':[ 0,-1],
+    's':[ 0, 1],'ArrowDown':[ 0, 1],
+    'a':[-1, 0],'ArrowLeft':[-1, 0],
+    'd':[ 1, 0],'ArrowRight':[ 1, 0],
+  };
+  if(map[e.key]){
+    e.preventDefault();
+    move(...map[e.key]);
+  }
+});
+
+// ── Name input enter key ────────────────────────────────────
+document.getElementById('name-input').addEventListener('keydown', e=>{
+  if(e.key==='Enter') startGame();
+});
+
+// ── Start ──────────────────────────────────────────────────
+function startGame(){
+  const name = document.getElementById('name-input').value.trim() || '勇者';
+  player = {
+    name, hp:30, maxHp:30, atk:6, def:1,
+    xp:0, xpNext:30, level:1, gold:0, potions:2
+  };
+  bossDead = false; inCombat = false; currentEnemy = null;
+  makeMap();
+
+  document.getElementById('intro').style.display='none';
+  document.getElementById('game').style.display='flex';
+  document.getElementById('log-wrap').style.display='block';
+
+  renderMap(); updateStatus();
+  log(`ようこそ ${name}！ダンジョンへ！ ボスを倒して出口(X)を目指せ。`, 'system');
+}
+</script>
+</body>
+</html>
